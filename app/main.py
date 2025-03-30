@@ -1,12 +1,12 @@
 from fastapi import FastAPI, Response, status,HTTPException, Depends
 from fastapi.params import Body
-from pydantic import BaseModel
-from typing import Optional 
+
+from typing import Optional , List
 from random import randrange
 import psycopg2
 import time
 from psycopg2.extras import RealDictCursor  
-from . import models
+from . import models, schemas
 from sqlalchemy.orm import Session
 from .database import engine, get_db
 models.Base.metadata.create_all(bind=engine)
@@ -33,11 +33,7 @@ my_posts =[{"title":"post1","content":"this is my first post","published":True,"
            {"title":"post1","content":"this is my first post","published":True,"id":4},
            {"title":"post1","content":"this is my first post","published":True,"id":5},]
 
-class Post(BaseModel):
-    title: str
-    content:str 
-    published:bool = True
-    rating: Optional[int] = None
+
 
 
 
@@ -48,11 +44,6 @@ def find_index_post(id):
             return i
     return None
 
-@app.get("/sqlalchemy")
-def test_posts(db: Session = Depends(get_db)):
-    posts = db.query(models.Post).all()
-    return {"status": posts}
-
 
 @app.get("/")
 def root():
@@ -60,17 +51,17 @@ def root():
 
 
 
-@app.get("/posts")
+@app.get("/posts", response_model=List[schemas.PostResponse])
 def get_posts(db: Session = Depends(get_db)):
     # cursor.execute("""SELECT * FROM POSTS""")
     # posts = cursor.fetchall()
     posts =  db.query(models.Post).all()
-    return {"data" : posts}
+    return posts
 
 
 
-@app.post("/posts", status_code=status.HTTP_201_CREATED)
-def create_post(post: Post, db: Session = Depends(get_db)):
+@app.post("/posts", status_code=status.HTTP_201_CREATED, response_model=schemas.PostResponse)
+def create_post(post: schemas.Post, db: Session = Depends(get_db)):
     try:
         # cursor.execute("""
         #     INSERT INTO posts (title, content, published)
@@ -85,7 +76,7 @@ def create_post(post: Post, db: Session = Depends(get_db)):
         db.add(new_post)
         db.commit()
         db.refresh(new_post)
-        return {"new_post": new_post}
+        return new_post
     except Exception as error:
         conn.rollback()
         print("Error occurred:", error)
@@ -94,7 +85,7 @@ def create_post(post: Post, db: Session = Depends(get_db)):
 
 
 
-@app.get("/posts/{id}")
+@app.get("/posts/{id}", response_model=schemas.PostResponse)
 def get_post(id:int, db: Session = Depends(get_db)):
     try:
         # cursor.execute("""SELECT * FROM posts where id = %s """, (str(id)))
@@ -102,7 +93,7 @@ def get_post(id:int, db: Session = Depends(get_db)):
         post = db.query(models.Post).filter(models.Post.id==id).first()
         if not post:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="post not found")
-        return {"data" : post}
+        return post
     except Exception as error:
         return {"error": "Some error occured"}
 
@@ -125,8 +116,8 @@ def delete_post(id:int, db: Session = Depends(get_db)):
 
 
 
-@app.put("/posts/{id}")
-def update_post(id:int, post:Post, db: Session = Depends(get_db)):
+@app.put("/posts/{id}", response_model=schemas.PostResponse)
+def update_post(id:int, post:schemas.Post, db: Session = Depends(get_db)):
     # cursor.execute("""UPDATE posts SET title=%s, content=%s, published=%s WHERE id=%s RETURNING *""",
     #                 (post.title, post.content, post.published, str(id)))
     # updated_post = cursor.fetchone()
@@ -137,4 +128,13 @@ def update_post(id:int, post:Post, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="post not found")
     updated_query.update({'title': 'Updated Title'})
     db.commit()
-    return {"data" :updated_post}
+    return update_post
+
+
+@app.post("/users", status_code=status.HTTP_201_CREATED)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    new_user = models.User(**user.dict())
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
